@@ -97,9 +97,10 @@ class TrainPipelineConfig(HubMixin):
     # Number of workers for the dataloader.
     num_workers: int = 4
     batch_size: int = 8
-    # M2 learning exercise: accumulate gradients over this many micro-batches before each optimizer
+    # [learning-project] M2: accumulate gradients over this many micro-batches before each optimizer
     # step. The effective batch size becomes batch_size * gradient_accumulation_steps * num_processes,
     # while peak memory stays close to a single micro-batch. 1 = disabled (original behavior).
+    # (Added for a distributed-training learning project — see learning_project/.)
     gradient_accumulation_steps: int = 1
     prefetch_factor: int = 4
     persistent_workers: bool = True

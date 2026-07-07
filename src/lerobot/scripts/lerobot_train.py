@@ -18,6 +18,18 @@
 Requires: pip install 'lerobot[training]'  (includes dataset + accelerate + wandb extras)
 """
 
+# ─────────────────────────────────────────────────────────────────────────────
+# [learning-project] MODIFIED FILE. This training script was extended as part of a
+# distributed / large-model training learning project (not part of upstream LeRobot).
+# Search this file for "[learning-project]" to find every block I added:
+#   • make_training_profiler() + profiler hooks     — M1 (profiling)
+#   • gradient accumulation via accelerator.accumulate()  — M2
+#   • use_amp wired into training mixed precision    — M2/M4 (was inference-only before)
+#   • FSDP compatibility (uniform-dtype cast, DDP-kwarg gating)  — M4
+#   • M2_BENCH peak-memory / avg-step-time logging
+# See ../../../learning_project/ for the roadmap, findings, and Modal run scripts.
+# ─────────────────────────────────────────────────────────────────────────────
+
 import dataclasses
 import logging
 import os
@@ -106,7 +118,7 @@ def update_policy(
     if sample_weighter is not None:
         sample_weights, weight_stats = sample_weighter.compute_batch_weights(batch)
 
-    # M2: accumulate gradients over cfg.gradient_accumulation_steps micro-batches. With the default
+    # [learning-project] M2: accumulate gradients over cfg.gradient_accumulation_steps micro-batches. With the default
     # of 1 this context is a no-op (sync_gradients is always True) and behavior is unchanged.
     grad_norm = None
     with accelerator.accumulate(policy):
@@ -172,7 +184,7 @@ def update_policy(
 
 
 def make_training_profiler(output_dir, device_type: str):
-    """Create a torch profiler for the first few training steps (M1 learning exercise).
+    """[learning-project] Create a torch profiler for the first few training steps (M1: profiling).
 
     Enabled by setting the env var ``LEROBOT_PROFILE=1``. The profiler records where each
     training step spends time (data loading vs. forward vs. backward vs. optimizer) and how
@@ -238,7 +250,7 @@ def train(cfg: TrainPipelineConfig, accelerator: "Accelerator | None" = None):
         # Accelerate auto-detects the device based on the available hardware and ignores the policy.device setting.
         # Force the device to be CPU when the active config's device is set to CPU (works for both policy and reward model training).
         force_cpu = cfg.trainable_config.device == "cpu"
-        # M2/M4: wire `use_amp` into training mixed precision. Previously this flag only affected
+        # [learning-project] M2/M4: wire `use_amp` into training mixed precision. Previously this flag only affected
         # inference/eval, so training always ran in fp32. When set, run bf16 mixed precision;
         # otherwise defer to the launcher/env (e.g. `accelerate launch --mixed_precision=...`).
         mixed_precision = (
@@ -466,7 +478,7 @@ def train(cfg: TrainPipelineConfig, accelerator: "Accelerator | None" = None):
         persistent_workers=cfg.persistent_workers and cfg.num_workers > 0,
     )
 
-    # M4/FSDP: FSDP flattens each wrapped unit into a single tensor and requires a uniform dtype.
+    # [learning-project] M4/FSDP: FSDP flattens each wrapped unit into a single tensor and requires a uniform dtype.
     # Some policies (e.g. SmolVLA) keep their VLM backbone in bf16 while the rest stays fp32, which
     # FSDP rejects ("Must flatten tensors with uniform dtype"). Cast to a single dtype before wrapping.
     if os.environ.get("ACCELERATE_USE_FSDP", "false").lower() == "true":
@@ -513,14 +525,14 @@ def train(cfg: TrainPipelineConfig, accelerator: "Accelerator | None" = None):
             f"Start offline training on a fixed dataset, with effective batch size: {effective_batch_size}"
         )
 
-    # M1 learning exercise: optionally profile the first few steps. Enable with LEROBOT_PROFILE=1.
+    # [learning-project] M1: optionally profile the first few steps. Enable with LEROBOT_PROFILE=1.
     profiler = None
     if os.environ.get("LEROBOT_PROFILE") and is_main_process:
         profiler = make_training_profiler(cfg.output_dir, device.type)
         profiler.start()
         logging.info("Profiler enabled (LEROBOT_PROFILE=1): tracing the first ~8 steps.")
 
-    # M2 benchmark: measure peak GPU memory + average step time over the run.
+    # [learning-project] M2 benchmark: measure peak GPU memory + average step time over the run.
     if device.type == "cuda":
         torch.cuda.reset_peak_memory_stats()
     loop_start = time.perf_counter()
@@ -650,6 +662,7 @@ def train(cfg: TrainPipelineConfig, accelerator: "Accelerator | None" = None):
     if eval_env:
         close_envs(eval_env)
 
+    # [learning-project] M2/M4 benchmark line: peak GPU memory + avg step time, parsed by the Modal scripts.
     if is_main_process:
         elapsed = time.perf_counter() - loop_start
         avg_step_ms = 1000 * elapsed / loop_steps
