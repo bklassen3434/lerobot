@@ -100,7 +100,7 @@ class TrainPipelineConfig(HubMixin):
     # [learning-project] M2: accumulate gradients over this many micro-batches before each optimizer
     # step. The effective batch size becomes batch_size * gradient_accumulation_steps * num_processes,
     # while peak memory stays close to a single micro-batch. 1 = disabled (original behavior).
-    # (Added for a distributed-training learning project — see learning_project/.)
+    # (Added for a distributed-training learning project — see my_contributions/.)
     gradient_accumulation_steps: int = 1
     prefetch_factor: int = 4
     persistent_workers: bool = True

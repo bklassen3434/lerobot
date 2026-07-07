@@ -1,0 +1,281 @@
+diff --git a/src/lerobot/configs/train.py b/src/lerobot/configs/train.py
+index c5b4ff5f..f761ea22 100644
+--- a/src/lerobot/configs/train.py
++++ b/src/lerobot/configs/train.py
+@@ -97,6 +97,11 @@ class TrainPipelineConfig(HubMixin):
+     # Number of workers for the dataloader.
+     num_workers: int = 4
+     batch_size: int = 8
++    # [learning-project] M2: accumulate gradients over this many micro-batches before each optimizer
++    # step. The effective batch size becomes batch_size * gradient_accumulation_steps * num_processes,
++    # while peak memory stays close to a single micro-batch. 1 = disabled (original behavior).
++    # (Added for a distributed-training learning project — see my_contributions/.)
++    gradient_accumulation_steps: int = 1
+     prefetch_factor: int = 4
+     persistent_workers: bool = True
+     steps: int = 100_000
+diff --git a/src/lerobot/scripts/lerobot_train.py b/src/lerobot/scripts/lerobot_train.py
+index 55a8cc93..efc72db1 100644
+--- a/src/lerobot/scripts/lerobot_train.py
++++ b/src/lerobot/scripts/lerobot_train.py
+@@ -18,10 +18,24 @@
+ Requires: pip install 'lerobot[training]'  (includes dataset + accelerate + wandb extras)
+ """
+ 
++# ─────────────────────────────────────────────────────────────────────────────
++# [learning-project] MODIFIED FILE. This training script was extended as part of a
++# distributed / large-model training learning project (not part of upstream LeRobot).
++# Search this file for "[learning-project]" to find every block I added:
++#   • make_training_profiler() + profiler hooks     — M1 (profiling)
++#   • gradient accumulation via accelerator.accumulate()  — M2
++#   • use_amp wired into training mixed precision    — M2/M4 (was inference-only before)
++#   • FSDP compatibility (uniform-dtype cast, DDP-kwarg gating)  — M4
++#   • M2_BENCH peak-memory / avg-step-time logging
++# See ../../../my_contributions/ for the roadmap, findings, and Modal run scripts.
++# ─────────────────────────────────────────────────────────────────────────────
++
+ import dataclasses
+ import logging
++import os
+ import time
+ from contextlib import nullcontext
++from pathlib import Path
+ from pprint import pformat
+ from typing import TYPE_CHECKING, Any
+ 
+@@ -104,62 +118,103 @@ def update_policy(
+     if sample_weighter is not None:
+         sample_weights, weight_stats = sample_weighter.compute_batch_weights(batch)
+ 
+-    # Let accelerator handle mixed precision
+-    with accelerator.autocast():
+-        if sample_weights is not None:
+-            # Use per-sample loss for weighted training
+-            # Note: Policies supporting sample weighting must implement forward(batch, reduction="none")
+-            per_sample_loss, output_dict = policy.forward(batch, reduction="none")
+-
+-            # Weighted loss: each sample's contribution is scaled by its weight.
+-            # We divide by weight sum (not batch size) so that if some weights are zero,
+-            # the remaining samples contribute proportionally more, preserving gradient scale.
+-            # Weights are pre-normalized to sum to batch_size for stable training dynamics.
+-            epsilon = 1e-6
+-            loss = (per_sample_loss * sample_weights).sum() / (sample_weights.sum() + epsilon)
+-
+-            # Log weighting statistics
+-            if output_dict is None:
+-                output_dict = {}
+-            for key, value in weight_stats.items():
+-                output_dict[f"sample_weight_{key}"] = value
+-        else:
+-            loss, output_dict = policy.forward(batch)
++    # [learning-project] M2: accumulate gradients over cfg.gradient_accumulation_steps micro-batches. With the default
++    # of 1 this context is a no-op (sync_gradients is always True) and behavior is unchanged.
++    grad_norm = None
++    with accelerator.accumulate(policy):
++        # Let accelerator handle mixed precision
++        with accelerator.autocast():
++            if sample_weights is not None:
++                # Use per-sample loss for weighted training
++                # Note: Policies supporting sample weighting must implement forward(batch, reduction="none")
++                per_sample_loss, output_dict = policy.forward(batch, reduction="none")
++
++                # Weighted loss: each sample's contribution is scaled by its weight.
++                # We divide by weight sum (not batch size) so that if some weights are zero,
++                # the remaining samples contribute proportionally more, preserving gradient scale.
++                # Weights are pre-normalized to sum to batch_size for stable training dynamics.
++                epsilon = 1e-6
++                loss = (per_sample_loss * sample_weights).sum() / (sample_weights.sum() + epsilon)
++
++                # Log weighting statistics
++                if output_dict is None:
++                    output_dict = {}
++                for key, value in weight_stats.items():
++                    output_dict[f"sample_weight_{key}"] = value
++            else:
++                loss, output_dict = policy.forward(batch)
+ 
+-        # TODO(rcadene): policy.unnormalize_outputs(out_dict)
++            # TODO(rcadene): policy.unnormalize_outputs(out_dict)
+ 
+-    # Use accelerator's backward method
+-    accelerator.backward(loss)
++        # Use accelerator's backward method
++        accelerator.backward(loss)
+ 
+-    # Clip gradients if specified
+-    if grad_clip_norm > 0:
+-        grad_norm = accelerator.clip_grad_norm_(policy.parameters(), grad_clip_norm)
+-    else:
+-        grad_norm = torch.nn.utils.clip_grad_norm_(
+-            policy.parameters(), float("inf"), error_if_nonfinite=False
+-        )
++        # Clip gradients and step only once the accumulated micro-batches are ready (sync step).
++        # accelerate makes optimizer.step()/zero_grad() no-ops on non-sync steps so grads accumulate.
++        if accelerator.sync_gradients:
++            if grad_clip_norm > 0:
++                grad_norm = accelerator.clip_grad_norm_(policy.parameters(), grad_clip_norm)
++            else:
++                grad_norm = torch.nn.utils.clip_grad_norm_(
++                    policy.parameters(), float("inf"), error_if_nonfinite=False
++                )
+ 
+-    # Optimizer step
+-    with lock if lock is not None else nullcontext():
+-        optimizer.step()
++        # Optimizer step
++        with lock if lock is not None else nullcontext():
++            optimizer.step()
+ 
+-    optimizer.zero_grad()
++        optimizer.zero_grad()
+ 
+-    # Step through pytorch scheduler at every batch instead of epoch
+-    if lr_scheduler is not None:
+-        lr_scheduler.step()
++        # Step the scheduler once per optimizer update (i.e. on the sync step), not per micro-batch.
++        if lr_scheduler is not None and accelerator.sync_gradients:
++            lr_scheduler.step()
+ 
+-    # Update internal buffers if policy has update method
+-    if has_method(accelerator.unwrap_model(policy, keep_fp32_wrapper=True), "update"):
++    # Update internal buffers (e.g. EMA) once per optimizer update, if the policy has an update method
++    if accelerator.sync_gradients and has_method(
++        accelerator.unwrap_model(policy, keep_fp32_wrapper=True), "update"
++    ):
+         accelerator.unwrap_model(policy, keep_fp32_wrapper=True).update()
+ 
+     train_metrics.loss = loss.item()
+-    train_metrics.grad_norm = grad_norm.item()
++    if grad_norm is not None:
++        train_metrics.grad_norm = grad_norm.item()
+     train_metrics.lr = optimizer.param_groups[0]["lr"]
+     train_metrics.update_s = time.perf_counter() - start_time
+     return train_metrics, output_dict
+ 
+ 
++def make_training_profiler(output_dir, device_type: str):
++    """[learning-project] Create a torch profiler for the first few training steps (M1: profiling).
++
++    Enabled by setting the env var ``LEROBOT_PROFILE=1``. The profiler records where each
++    training step spends time (data loading vs. forward vs. backward vs. optimizer) and how
++    much memory it uses, then writes a trace to ``<output_dir>/profiler``.
++
++    View the trace with either:
++      - TensorBoard: ``tensorboard --logdir <output_dir>/profiler``
++      - Chrome:      open ``chrome://tracing`` and load the ``*.pt.trace.json`` file
++
++    The schedule below skips 1 step, warms up for 2, then records 5 real steps once. That is
++    enough to see the bottleneck without generating a huge trace, so run with a small
++    ``--steps`` (e.g. ``--steps=10``) when profiling.
++    """
++    activities = [torch.profiler.ProfilerActivity.CPU]
++    if device_type == "cuda":
++        activities.append(torch.profiler.ProfilerActivity.CUDA)
++
++    trace_dir = Path(output_dir) / "profiler"
++    trace_dir.mkdir(parents=True, exist_ok=True)
++
++    return torch.profiler.profile(
++        activities=activities,
++        schedule=torch.profiler.schedule(wait=1, warmup=2, active=5, repeat=1),
++        on_trace_ready=torch.profiler.tensorboard_trace_handler(str(trace_dir)),
++        record_shapes=True,
++        profile_memory=True,
++        with_stack=True,
++    )
++
++
+ @parser.wrap()
+ def train(cfg: TrainPipelineConfig, accelerator: "Accelerator | None" = None):
+     """
+@@ -195,9 +250,19 @@ def train(cfg: TrainPipelineConfig, accelerator: "Accelerator | None" = None):
+         # Accelerate auto-detects the device based on the available hardware and ignores the policy.device setting.
+         # Force the device to be CPU when the active config's device is set to CPU (works for both policy and reward model training).
+         force_cpu = cfg.trainable_config.device == "cpu"
++        # [learning-project] M2/M4: wire `use_amp` into training mixed precision. Previously this flag only affected
++        # inference/eval, so training always ran in fp32. When set, run bf16 mixed precision;
++        # otherwise defer to the launcher/env (e.g. `accelerate launch --mixed_precision=...`).
++        mixed_precision = (
++            "bf16" if getattr(cfg.trainable_config, "use_amp", False) and not force_cpu else None
++        )
++        # DDP-specific kwargs don't apply under FSDP; omit them when FSDP is enabled to avoid conflicts.
++        use_fsdp = os.environ.get("ACCELERATE_USE_FSDP", "false").lower() == "true"
+         accelerator = Accelerator(
+             step_scheduler_with_optimizer=False,
+-            kwargs_handlers=[ddp_kwargs],
++            gradient_accumulation_steps=cfg.gradient_accumulation_steps,
++            mixed_precision=mixed_precision,
++            kwargs_handlers=None if use_fsdp else [ddp_kwargs],
+             cpu=force_cpu,
+         )
+ 
+@@ -413,6 +478,12 @@ def train(cfg: TrainPipelineConfig, accelerator: "Accelerator | None" = None):
+         persistent_workers=cfg.persistent_workers and cfg.num_workers > 0,
+     )
+ 
++    # [learning-project] M4/FSDP: FSDP flattens each wrapped unit into a single tensor and requires a uniform dtype.
++    # Some policies (e.g. SmolVLA) keep their VLM backbone in bf16 while the rest stays fp32, which
++    # FSDP rejects ("Must flatten tensors with uniform dtype"). Cast to a single dtype before wrapping.
++    if os.environ.get("ACCELERATE_USE_FSDP", "false").lower() == "true":
++        policy = policy.to(dtype=torch.float32)
++
+     # Prepare everything with accelerator
+     accelerator.wait_for_everyone()
+     policy, optimizer, dataloader, lr_scheduler = accelerator.prepare(
+@@ -454,6 +525,19 @@ def train(cfg: TrainPipelineConfig, accelerator: "Accelerator | None" = None):
+             f"Start offline training on a fixed dataset, with effective batch size: {effective_batch_size}"
+         )
+ 
++    # [learning-project] M1: optionally profile the first few steps. Enable with LEROBOT_PROFILE=1.
++    profiler = None
++    if os.environ.get("LEROBOT_PROFILE") and is_main_process:
++        profiler = make_training_profiler(cfg.output_dir, device.type)
++        profiler.start()
++        logging.info("Profiler enabled (LEROBOT_PROFILE=1): tracing the first ~8 steps.")
++
++    # [learning-project] M2 benchmark: measure peak GPU memory + average step time over the run.
++    if device.type == "cuda":
++        torch.cuda.reset_peak_memory_stats()
++    loop_start = time.perf_counter()
++    loop_steps = max(1, cfg.steps - step)
++
+     for _ in range(step, cfg.steps):
+         start_time = time.perf_counter()
+         batch = next(dl_iter)
+@@ -480,6 +564,8 @@ def train(cfg: TrainPipelineConfig, accelerator: "Accelerator | None" = None):
+         if is_main_process:
+             progbar.update(1)
+         train_tracker.step()
++        if profiler is not None:
++            profiler.step()  # tell the profiler one training step finished
+         is_log_step = cfg.log_freq > 0 and step % cfg.log_freq == 0 and is_main_process
+         is_saving_step = step % cfg.save_freq == 0 or step == cfg.steps
+         is_eval_step = cfg.eval_freq > 0 and step % cfg.eval_freq == 0
+@@ -566,13 +652,27 @@ def train(cfg: TrainPipelineConfig, accelerator: "Accelerator | None" = None):
+ 
+             accelerator.wait_for_everyone()
+ 
++    if profiler is not None:
++        profiler.stop()
++        logging.info(f"Profiler trace written to {Path(cfg.output_dir) / 'profiler'}")
++
+     if is_main_process:
+         progbar.close()
+ 
+     if eval_env:
+         close_envs(eval_env)
+ 
++    # [learning-project] M2/M4 benchmark line: peak GPU memory + avg step time, parsed by the Modal scripts.
+     if is_main_process:
++        elapsed = time.perf_counter() - loop_start
++        avg_step_ms = 1000 * elapsed / loop_steps
++        peak_mb = torch.cuda.max_memory_allocated() / 1e6 if device.type == "cuda" else 0.0
++        logging.info(
++            f"M2_BENCH steps={loop_steps} avg_step_ms={avg_step_ms:.1f} peak_gpu_mem_mb={peak_mb:.0f} "
++            f"batch_size={cfg.batch_size} grad_accum={cfg.gradient_accumulation_steps} "
++            f"effective_batch={effective_batch_size * cfg.gradient_accumulation_steps} "
++            f"use_amp={getattr(cfg.policy, 'use_amp', None)}"
++        )
+         logging.info("End of training")
+ 
+         if getattr(active_cfg, "push_to_hub", False):

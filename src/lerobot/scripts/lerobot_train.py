@@ -27,7 +27,7 @@ Requires: pip install 'lerobot[training]'  (includes dataset + accelerate + wand
 #   • use_amp wired into training mixed precision    — M2/M4 (was inference-only before)
 #   • FSDP compatibility (uniform-dtype cast, DDP-kwarg gating)  — M4
 #   • M2_BENCH peak-memory / avg-step-time logging
-# See ../../../learning_project/ for the roadmap, findings, and Modal run scripts.
+# See ../../../my_contributions/ for the roadmap, findings, and Modal run scripts.
 # ─────────────────────────────────────────────────────────────────────────────
 
 import dataclasses

@@ -14,7 +14,7 @@ efficiency features, fine-tuning it cheaply with LoRA, and scaling it across mul
 
 ## 🟢 My Contributions
 
-### 1. A learning project with measured results → [`learning_project/`](./learning_project/)
+### 1. A learning project with measured results → [`my_contributions/`](./my_contributions/)
 
 | Milestone | What I did | Headline result |
 |-----------|-----------|-----------------|
@@ -23,16 +23,18 @@ efficiency features, fine-tuning it cheaply with LoRA, and scaling it across mul
 | **M3 — LoRA fine-tuning** | Fine-tuned the pretrained `smolvla_base` with LoRA | Trained just **0.16% of params** (743K of 450M) and it still learned |
 | **M4 — Distributed** | Ran 1-GPU vs DDP vs FSDP on 2× A10G | **DDP ~1.9× throughput** (near-linear); real bf16 **+40%**; debugged FSDP |
 
-Full write-ups (with numbers, caveats, and the reasoning): the [`learning_project/`](./learning_project/)
-folder — one `M*_FINDINGS.md` per milestone, plus [`LEARNING_ROADMAP.md`](./learning_project/LEARNING_ROADMAP.md).
+Full write-ups (with numbers, caveats, and the reasoning): the [`my_contributions/`](./my_contributions/)
+folder — one `M*_FINDINGS.md` per milestone, plus [`LEARNING_ROADMAP.md`](./my_contributions/LEARNING_ROADMAP.md).
 
-The [`learning_project/modal/`](./learning_project/modal/) folder has the exact **Modal scripts** I used
+The [`my_contributions/modal/`](./my_contributions/modal/) folder has the exact **Modal scripts** I used
 to run each milestone on rented GPUs.
 
 ### 2. Real changes to the LeRobot training pipeline
 
-I modified **two core files**. Every added block is tagged with `[learning-project]` — run
-`grep -rn "\[learning-project\]" src/` to see all 10 of them.
+I modified **two core files** in the upstream source (they must stay in `src/lerobot/` for the package
+to run). A self-contained diff of these edits lives in
+[`my_contributions/code_changes/`](./my_contributions/code_changes/). In the live files, every added
+block is tagged with `[learning-project]` — run `grep -rn "\[learning-project\]" src/` to see all 10.
 
 | File | What I added |
 |------|-------------|
@@ -53,17 +55,17 @@ I modified **two core files**. Every added block is tagged with `[learning-proje
 
 ```bash
 pip install modal && modal setup                 # one-time Modal account link
-modal run learning_project/modal/modal_m1.py     # M1: profile SmolVLA
-modal run learning_project/modal/modal_m2.py     # M2: efficiency benchmark
-modal run learning_project/modal/modal_m3.py     # M3: LoRA fine-tuning
-modal run learning_project/modal/modal_m4.py     # M4: DDP vs FSDP (needs 2 GPUs)
+modal run my_contributions/modal/modal_m1.py     # M1: profile SmolVLA
+modal run my_contributions/modal/modal_m2.py     # M2: efficiency benchmark
+modal run my_contributions/modal/modal_m3.py     # M3: LoRA fine-tuning
+modal run my_contributions/modal/modal_m4.py     # M4: DDP vs FSDP (needs 2 GPUs)
 ```
 
 ---
 
 ## About the base project (upstream LeRobot)
 
-Everything outside `learning_project/` and the two tagged files above is unmodified Hugging Face
+Everything outside `my_contributions/` and the two tagged files above is unmodified Hugging Face
 LeRobot — a PyTorch library for real-world robotics (datasets, pretrained policies, training/eval
 tools). Its original documentation is in [`README_UPSTREAM.md`](./README_UPSTREAM.md), and the source
 project lives at https://github.com/huggingface/lerobot
