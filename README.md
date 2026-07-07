@@ -12,6 +12,20 @@ efficiency features, fine-tuning it cheaply with LoRA, and scaling it across mul
 
 ---
 
+## 📖 How to read this repo
+
+1. **Start here** — this README is the overview.
+2. **[`my_contributions/`](./my_contributions/)** — everything I built: the roadmap, the M1–M4 findings
+   write-ups, and the Modal scripts I used to run each experiment. This folder is 100% my work.
+3. **My code changes** to LeRobot's training pipeline live in two files —
+   [`src/lerobot/scripts/lerobot_train.py`](./src/lerobot/scripts/lerobot_train.py) and
+   [`src/lerobot/configs/train.py`](./src/lerobot/configs/train.py) — with every added block tagged
+   `[learning-project]` (run `grep -rn "\[learning-project\]" src/`).
+4. **Everything else** is unmodified upstream LeRobot (its original README is
+   [`README_UPSTREAM.md`](./README_UPSTREAM.md)).
+
+---
+
 ## 🟢 My Contributions
 
 ### 1. A learning project with measured results → [`my_contributions/`](./my_contributions/)
@@ -32,9 +46,8 @@ to run each milestone on rented GPUs.
 ### 2. Real changes to the LeRobot training pipeline
 
 I modified **two core files** in the upstream source (they must stay in `src/lerobot/` for the package
-to run). A self-contained diff of these edits lives in
-[`my_contributions/code_changes/`](./my_contributions/code_changes/). In the live files, every added
-block is tagged with `[learning-project]` — run `grep -rn "\[learning-project\]" src/` to see all 10.
+to run). Every added block is tagged with `[learning-project]` — run
+`grep -rn "\[learning-project\]" src/` to see all 10.
 
 | File | What I added |
 |------|-------------|
