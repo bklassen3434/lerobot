@@ -22,9 +22,12 @@ Download checkpoints locally:
     modal volume get lerobot-outputs /smolvla_pick_pen ./outputs_from_modal
 """
 
+from pathlib import Path
+
 import modal
 
-REPO = "/Users/benklassen/conductor/workspaces/lerobot/hyderabad-v1"
+# The checkout this file lives in (my_contributions/modal/ -> repo root).
+REPO = str(Path(__file__).resolve().parents[2])
 HF_USER = "bklassen3434"  # <-- set to your Hub username if different
 # Default dataset; override per-run with `--dataset <stamped-name>` (lerobot-record appends a
 # timestamp to the repo_id when it creates a dataset).

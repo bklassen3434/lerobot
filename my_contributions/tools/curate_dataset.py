@@ -104,6 +104,10 @@ def trim(
         for i in range(lo, hi):
             item = src[i]
             frame = {k: (v.numpy() if isinstance(v, torch.Tensor) else v) for k, v in item.items() if k in features}
+            # Shape-(1,) features (e.g. sim's `is_sim`) come back as 0-d tensors; restore the declared shape.
+            for k in features:
+                if "image" not in k and np.shape(frame[k]) == ():
+                    frame[k] = np.reshape(frame[k], features[k]["shape"])
             # Images arrive as CHW float in [0,1]; the writer expects HWC uint8.
             for k in features:
                 if "image" in k:
