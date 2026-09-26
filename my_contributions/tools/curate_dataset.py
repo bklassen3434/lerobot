@@ -17,7 +17,7 @@ assuming it is already underway) and a short lead-out past the grasp.
 
     # write a trimmed copy
     python my_contributions/tools/curate_dataset.py <repo_id> --out <new_repo_id> \
-        [--lead-in 15] [--lead-out 20] [--min-active 120]
+        [--lead-in 15] [--lead-out 20] [--min-active 120] [--push]
 
 Episodes whose active span is shorter than --min-active are dropped as likely failures; they
 are listed in the report so you can eyeball them first.
@@ -25,6 +25,7 @@ are listed in the report so you can eyeball them first.
 
 import argparse
 import glob
+import os
 
 import numpy as np
 import pandas as pd
@@ -32,7 +33,7 @@ import torch
 
 from lerobot.datasets.lerobot_dataset import LeRobotDataset
 
-CACHE = "/Users/benklassen/.cache/huggingface/lerobot"
+CACHE = os.path.expanduser("~/.cache/huggingface/lerobot")
 MOVE_THRESHOLD = 0.5  # summed abs joint delta per frame (deg) that counts as "moving"
 
 
@@ -76,7 +77,9 @@ def report(r: pd.DataFrame, min_active: int) -> None:
         print(short[["ep", "n", "active", "grasp"]].to_string(index=False))
 
 
-def trim(src_repo: str, out_repo: str, r: pd.DataFrame, lead_in: int, lead_out: int, min_active: int) -> None:
+def trim(
+    src_repo: str, out_repo: str, r: pd.DataFrame, lead_in: int, lead_out: int, min_active: int, push: bool = False
+) -> None:
     src = LeRobotDataset(src_repo, root=f"{CACHE}/{src_repo}")
     features = {k: v for k, v in src.meta.features.items() if not k.startswith(("index", "timestamp", "frame_index", "episode_index", "task_index"))}
 
@@ -111,7 +114,11 @@ def trim(src_repo: str, out_repo: str, r: pd.DataFrame, lead_in: int, lead_out: 
         dst.save_episode()
         print(f"  ep {row.ep:3d}: kept {hi - lo:3d} / {row.n} frames", flush=True)
 
+    dst.finalize()
     print(f"\nwrote {out_repo}: {kept_frames} frames (was {r['n'].sum()})")
+    if push:
+        dst.push_to_hub()
+        print(f"pushed https://huggingface.co/datasets/{out_repo}")
 
 
 def main() -> None:
@@ -121,13 +128,14 @@ def main() -> None:
     p.add_argument("--lead-in", type=int, default=15)
     p.add_argument("--lead-out", type=int, default=20)
     p.add_argument("--min-active", type=int, default=120)
+    p.add_argument("--push", action="store_true", help="push the trimmed copy to the Hub")
     a = p.parse_args()
 
     r = analyse(f"{CACHE}/{a.repo_id}")
     report(r, a.min_active)
     if a.out:
         print(f"\ntrimming -> {a.out} (lead_in={a.lead_in}, lead_out={a.lead_out})")
-        trim(a.repo_id, a.out, r, a.lead_in, a.lead_out, a.min_active)
+        trim(a.repo_id, a.out, r, a.lead_in, a.lead_out, a.min_active, a.push)
 
 
 if __name__ == "__main__":
