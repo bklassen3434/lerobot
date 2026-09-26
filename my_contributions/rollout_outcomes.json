@@ -1,0 +1,88 @@
+{
+  "_README": [
+    "Hand-checked outcomes for rollout datasets, used to turn failed rollouts into training",
+    "signal for the progress model. Every entry was verified frame by frame against the",
+    "top camera (see progress_labels.py --grasp-frames and outputs/progress_model/lift_*.png).",
+    "",
+    "'grabbed' is the pen the gripper actually closed on, NOT the pen the policy was asked for.",
+    "'lifted' is whether that pen left the table. Joint angles cannot decide this: ep7 lifted",
+    "the pen with 1.1 deg of shoulder_lift travel because the lift came from the wrist.",
+    "'grabbed': null means the arm never closed on a pen at all.",
+    "'lifted': null means the video does not settle it -- that colour is left unlabelled."
+  ],
+  "bklassen3434/rollout_pen_20260925_155645": {
+    "note": [
+      "contrast_010000, 2026-09-25. Block A = eps 0-6 (blue NEAR/front, pink FAR/back);",
+      "the pens were then physically swapped for block B = eps 7-12 (blue FAR, pink NEAR).",
+      "All 8 reaches went to the FAR pen regardless of the prompt. Only 2 of 13 lifted a pen."
+    ],
+    "episodes": {
+      "0": {
+        "grabbed": "pink",
+        "lifted": false,
+        "asked": "blue"
+      },
+      "1": {
+        "grabbed": null,
+        "lifted": false,
+        "asked": "blue"
+      },
+      "2": {
+        "grabbed": null,
+        "lifted": false,
+        "asked": "blue"
+      },
+      "3": {
+        "grabbed": "pink",
+        "lifted": true,
+        "asked": "pink"
+      },
+      "4": {
+        "grabbed": null,
+        "lifted": false,
+        "asked": "pink"
+      },
+      "5": {
+        "grabbed": "pink",
+        "lifted": null,
+        "asked": "pink",
+        "comment": "ambiguous: the pen is clamped in the jaws but never visibly leaves the table"
+      },
+      "6": {
+        "grabbed": null,
+        "lifted": false,
+        "asked": "blue"
+      },
+      "7": {
+        "grabbed": "blue",
+        "lifted": true,
+        "asked": "blue"
+      },
+      "8": {
+        "grabbed": null,
+        "lifted": false,
+        "asked": "blue"
+      },
+      "9": {
+        "grabbed": "blue",
+        "lifted": false,
+        "asked": "blue"
+      },
+      "10": {
+        "grabbed": "blue",
+        "lifted": false,
+        "asked": "pink"
+      },
+      "11": {
+        "grabbed": "blue",
+        "lifted": false,
+        "asked": "pink"
+      },
+      "12": {
+        "grabbed": "blue",
+        "lifted": false,
+        "asked": "pink"
+      }
+    }
+  }
+}

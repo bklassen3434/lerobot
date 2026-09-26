@@ -177,3 +177,8 @@ outputs_from_modal/
 *.urdf
 *.xml
 *.part
+
+# The global *.xml / *.stl rules above are meant for build artefacts, but they also swallow
+# the hand-authored MuJoCo scene and the SO-101 meshes the sim needs to run. Keep those.
+!my_contributions/sim/assets/**/*.xml
+!my_contributions/sim/assets/**/*.stl

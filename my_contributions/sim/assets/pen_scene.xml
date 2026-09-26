@@ -1,0 +1,146 @@
+<mujoco model="pen_pickup">
+  <!--
+    Digital twin of Ben's SO-101 pen-selection scene.
+
+    GEOMETRY is anchored to the REAL dataset (bklassen3434/pick_pen_v2_20260920_124400):
+    forward-kinematics of the 60 real grasp frames puts the tool site at
+      slot A  x=0.250 y=-0.026   slot B  x=0.249 y=+0.159
+    i.e. both slots ~25 cm out from the base, 18.5 cm apart, with each pen's long
+    axis pointing radially away from the robot. The table top is the arm's base
+    plane (z=0). Joint angles are LeRobot's calibrated degrees: qpos = deg2rad(action).
+
+    APPEARANCE is anchored to the same frames, measured in out/probe_grid.png:
+      wood table      RGB (173,149,100)  hue 40.5  sat 0.42
+      rose-gold pen   RGB (146,119,101)  hue 24.0  sat 0.31
+      blue pen        RGB (102,115,128)  hue 210.0 sat 0.20
+    Note how little separates them: the rose-gold pen sits 0.158 from the table in
+    RGB, the blue pen 0.327. The v1 sim used hot magenta (sat 0.59, val 1.00) on a
+    grey checkerboard, which made the colour discrimination roughly twice as easy as
+    the real one -- a policy could solve sim with a crude hue test and learn nothing
+    that transfers. Matching these numbers is the whole point of this file; the
+    table texture is cropped from Ben's own frames by extract_textures.py.
+  -->
+  <include file="so101_arm.xml"/>
+
+  <option cone="elliptic" impratio="10" timestep="0.0016666667" integrator="implicitfast"/>
+
+  <visual>
+    <!-- Low ambient + a strong key. Flat studio-style lighting was the main reason the
+         v1 renders had only half the real camera's dynamic range (per-channel std
+         0.101-0.143 vs 0.234-0.308): with everything evenly lit there are no bright
+         highlights and no real shadows. Dropping ambient 4x and driving the key 2.2x
+         matches the red and green channels outright and leaves only blue short. -->
+    <headlight diffuse="0.150 0.143 0.130" ambient="0.170 0.164 0.150" specular="0.10 0.10 0.10"/>
+    <global offwidth="1280" offheight="960"/>
+    <quality shadowsize="8192"/>
+    <!-- A directional key spreads its shadow map over the whole scene, which at wrist
+         range (a few cm from the jaws) aliases into visibly jagged, stair-stepped
+         shadow edges -- an artifact with no counterpart in the real frames. Clipping
+         the shadow frustum to 0.8 m concentrates the same map on the workspace. -->
+    <map shadowclip="0.8" shadowscale="0.5"/>
+  </visual>
+
+  <asset>
+    <texture type="skybox" builtin="gradient" rgb1="0.62 0.62 0.60" rgb2="0.38 0.38 0.37" width="256" height="1536"/>
+
+    <!-- Both cropped from the real top camera by extract_textures.py. -->
+    <texture name="tabletex" type="2d" file="table_wood.png"/>
+    <texture name="backtex" type="2d" file="backdrop.png"/>
+
+    <material name="tablemat" texture="tabletex" texuniform="true" texrepeat="2 2"
+              specular="0.12" shininess="0.25" reflectance="0.0"/>
+    <!-- The key light points down at the table, so an unlit wall rendered as a dark
+         grey band where the real frames show a bright white wall and radiator.
+         Emission makes it self-lit, which is what a distant wall under room lighting
+         effectively is from this camera's point of view. -->
+    <material name="wallmat" texture="backtex" texuniform="true" texrepeat="1 1"
+              specular="0.03" shininess="0.05" emission="0.45"/>
+
+    <!-- Pens. The blue is a DESATURATED slate, not royal blue; the "pink" is a
+         metallic rose-gold, so it needs high specular/shininess -- its moving
+         highlight is most of what makes it visible against wood of the same hue. -->
+    <material name="blue_pen" rgba="0.360 0.450 0.545 1" specular="0.35" shininess="0.45"/>
+    <material name="pink_pen" rgba="0.63 0.455 0.40 1" specular="0.90" shininess="0.85" reflectance="0.12"/>
+    <material name="grey_pen" rgba="0.50 0.49 0.47 1" specular="0.45" shininess="0.50"/>
+    <!-- Cables, USB hub, and the dark void under the desk. -->
+    <material name="darkmat" rgba="0.07 0.07 0.08 1" specular="0.25" shininess="0.4"/>
+    <material name="floormat" rgba="0.10 0.09 0.09 1" specular="0.0" shininess="0.0"/>
+  </asset>
+
+  <worldbody>
+    <!-- Lighting: one warm key + one cool fill, both dimmer than the v1 scene and
+         both randomised per episode. -->
+    <!-- DIRECTIONAL, not a spot. Driving a spotlight hard did match the real camera's
+         per-channel std, but it did it by burning a hotspot into the middle of the table
+         and crushing the corners -- the real desk is lit evenly by room light. The
+         real scene's dynamic range comes from CONTENT (white wall and arm against dark
+         cables and the void under the desk), not from harsh light, so the key is even
+         and the remaining spread is left to the per-channel gain in sensor.py. -->
+    <light name="key"  pos="0.35 -0.45 0.9" dir="-0.15 0.40 -0.90" directional="true"
+           castshadow="false" diffuse="0.480 0.446 0.390" specular="0.30 0.28 0.25"/>
+    <!-- A second key from the other side, the only one casting. Two lights approximate
+         the soft, wrapped shading of room light; a single hard shadow read as a jagged
+         black blob in the wrist view, which sits centimetres from the jaws. -->
+    <light name="key2" pos="-0.25 -0.30 0.8" dir="0.30 0.35 -0.88" directional="true"
+           castshadow="true" diffuse="0.230 0.215 0.190" specular="0.10 0.10 0.09"/>
+    <light name="fill" pos="0.1 0.5 0.8" dir="0.1 -0.4 -0.9" directional="true"
+           diffuse="0.300 0.315 0.345" specular="0.0 0.0 0.0"/>
+
+    <!-- Table: top surface at z=-0.0024, the underside of the arm's base mesh. -->
+    <!-- Wide in x so the table's side edges stay out of frame under camera jitter, as
+         they do in the real view; the far edge at y=0.61 still meets the wall. -->
+    <geom name="table" type="box" size="0.95 0.55 0.02" pos="0.22 0.06 -0.0224"
+          material="tablemat" friction="0.9 0.005 0.0001"/>
+    <!-- Back wall carries the real backdrop crop (wall, radiator, cable run). -->
+    <geom name="backwall" type="box" size="1.3 0.01 0.55" pos="0.22 0.62 0.55" material="wallmat"/>
+
+    <!-- Scene clutter. This is NOT decoration: the real frames span a much wider
+         dynamic range than the v1 sim did (per-channel std 0.234-0.308 vs 0.101-0.143)
+         because they contain a bright white wall, near-black cables and the dark
+         void under the desk all at once. Matching that by stretching pixel statistics
+         needed a 3x gain on the blue channel and turned the wood lurid; putting the
+         actual content in the scene gets there honestly. All of it sits at y > 0.30,
+         well behind the workspace (the arm never reaches past y = 0.16), so it
+         cannot interfere with a grasp. -->
+    <geom name="floor" type="box" size="1.6 1.6 0.02" pos="0.22 0.06 -0.74" material="floormat"/>
+    <geom name="hub" type="box" size="0.055 0.035 0.012" pos="0.02 0.40 0.010" material="darkmat"/>
+    <geom name="cable1" type="capsule" fromto="-0.25 0.345 0.004  0.75 0.365 0.004" size="0.0035" material="darkmat"/>
+    <geom name="cable2" type="capsule" fromto="-0.25 0.395 0.004  0.75 0.330 0.004" size="0.0030" material="darkmat"/>
+    <geom name="cable3" type="capsule" fromto="0.05 0.415 0.004  0.75 0.455 0.004" size="0.0040" material="darkmat"/>
+
+    <!-- Top camera. Fitted to Ben's real webcam by fit_camera.py: the real frame puts
+         the arm base at the very LEFT edge, which pins the camera to aim ~0.34 m out in
+         +x (well past the arm) from 0.58 m at 48 deg elevation. The v1 pose aimed at the
+         arm from 0.71 m, which centred it and shrank the table. Randomised per episode. -->
+    <camera name="top" pos="0.3400 -0.3431 0.4410" xyaxes="1 0 0  0 0.7431 0.6691" fovy="52"/>
+
+    <!-- Three pens, free-floating, laid radially. Positions are set from Python. -->
+    <body name="pen_blue" pos="0.25 -0.09 0.005">
+      <freejoint name="pen_blue_free"/>
+      <geom name="pen_blue_g" type="capsule" fromto="-0.065 0 0  0.065 0 0" size="0.005"
+            material="blue_pen" mass="0.009" friction="1.4 0.02 0.002" condim="4"
+            solimp="0.95 0.99 0.001" solref="0.005 1"/>
+    </body>
+    <body name="pen_pink" pos="0.25 0.06 0.005">
+      <freejoint name="pen_pink_free"/>
+      <geom name="pen_pink_g" type="capsule" fromto="-0.065 0 0  0.065 0 0" size="0.005"
+            material="pink_pen" mass="0.009" friction="1.4 0.02 0.002" condim="4"
+            solimp="0.95 0.99 0.001" solref="0.005 1"/>
+    </body>
+    <body name="pen_grey" pos="0.25 0.21 0.005">
+      <freejoint name="pen_grey_free"/>
+      <geom name="pen_grey_g" type="capsule" fromto="-0.065 0 0  0.065 0 0" size="0.005"
+            material="grey_pen" mass="0.009" friction="1.4 0.02 0.002" condim="4"
+            solimp="0.95 0.99 0.001" solref="0.005 1"/>
+    </body>
+  </worldbody>
+
+  <keyframe>
+    <key name="rest"
+         qpos="-1.0001 -1.7453 1.6894 0.3683 0.0524 0.2566
+                0.25 -0.09 0.005 1 0 0 0
+                0.25  0.06 0.005 1 0 0 0
+                0.25  0.21 0.005 1 0 0 0"
+         ctrl="-1.0001 -1.7453 1.6894 0.3683 0.0524 0.2566"/>
+  </keyframe>
+</mujoco>

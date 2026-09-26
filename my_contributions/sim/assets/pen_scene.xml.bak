@@ -1,0 +1,86 @@
+<mujoco model="pen_pickup">
+  <!--
+    Digital twin of Ben's SO-101 pen-selection scene.
+
+    Geometry is anchored to the REAL dataset (bklassen3434/pick_pen_v2_20260920_124400):
+    forward-kinematics of the 60 real grasp frames puts the tool site at
+      slot A  x=0.250 y=-0.026   slot B  x=0.249 y=+0.159
+    i.e. both slots ~25 cm out from the base, 18.5 cm apart, with each pen's long
+    axis pointing radially away from the robot. The table top is the arm's base
+    plane (z=0), which is why the real grasps land at z~-0.016 (the tool site sits
+    ~2.2 cm beyond the pinch point along the approach axis).
+
+    Joint angles here are the SAME convention as LeRobot's calibrated degrees:
+    qpos = deg2rad(action). Verified against the dataset's joint limits.
+  -->
+  <include file="so101_arm.xml"/>
+
+  <option cone="elliptic" impratio="10" timestep="0.0016666667" integrator="implicitfast"/>
+
+  <visual>
+    <headlight diffuse="0.4 0.4 0.4" ambient="0.35 0.35 0.35" specular="0.1 0.1 0.1"/>
+    <global offwidth="1280" offheight="960"/>
+    <quality shadowsize="4096"/>
+  </visual>
+
+  <asset>
+    <texture type="skybox" builtin="gradient" rgb1="0.55 0.6 0.68" rgb2="0.2 0.24 0.3" width="256" height="1536"/>
+    <texture name="tabletex" type="2d" builtin="checker" mark="none"
+             rgb1="0.62 0.60 0.56" rgb2="0.58 0.56 0.52" width="400" height="400"/>
+    <material name="tablemat" texture="tabletex" texuniform="true" texrepeat="6 6" specular="0.15" shininess="0.1" reflectance="0.0"/>
+    <material name="wallmat" rgba="0.72 0.72 0.70 1" specular="0.05" shininess="0.05"/>
+    <material name="blue_pen" rgba="0.10 0.25 0.85 1" specular="0.4" shininess="0.5"/>
+    <material name="pink_pen" rgba="0.92 0.30 0.62 1" specular="0.4" shininess="0.5"/>
+    <material name="grey_pen" rgba="0.45 0.45 0.47 1" specular="0.4" shininess="0.5"/>
+  </asset>
+
+  <worldbody>
+    <!-- Lighting: one key light + one fill. Both are randomised per episode. -->
+    <light name="key"  pos="0.35 -0.45 0.9" dir="-0.2 0.45 -0.9" directional="false"
+           diffuse="0.55 0.55 0.55" specular="0.2 0.2 0.2" cutoff="70" exponent="8"/>
+    <light name="fill" pos="0.1 0.5 0.8" dir="0.1 -0.4 -0.9" directional="true"
+           diffuse="0.3 0.3 0.3" specular="0.0 0.0 0.0"/>
+
+    <!-- Table: top surface at z=-0.0024, which is the underside of the arm's base mesh. -->
+    <geom name="table" type="box" size="0.55 0.55 0.02" pos="0.22 0.06 -0.0224"
+          material="tablemat" friction="0.9 0.005 0.0001"/>
+    <!-- Back wall, so the top camera sees something other than skybox behind the pens. -->
+    <geom name="backwall" type="box" size="0.6 0.01 0.35" pos="0.22 0.62 0.35" material="wallmat"/>
+
+    <!-- Top camera: nominal stand-in for Ben's USB webcam (index 0). Exact extrinsics
+         of the real camera are unknown, so this pose is randomised per episode. -->
+    <camera name="top" pos="0.22 -0.52 0.42" xyaxes="1 0 0  0 0.63 0.78" fovy="52"/>
+
+    <!-- Three pens, free-floating, laid radially. Positions are set from Python. -->
+    <body name="pen_blue" pos="0.25 -0.09 0.005">
+      <freejoint name="pen_blue_free"/>
+      <geom name="pen_blue_g" type="capsule" fromto="-0.065 0 0  0.065 0 0" size="0.005"
+            material="blue_pen" mass="0.009" friction="1.4 0.02 0.002" condim="4"
+            solimp="0.95 0.99 0.001" solref="0.005 1"/>
+    </body>
+    <body name="pen_pink" pos="0.25 0.06 0.005">
+      <freejoint name="pen_pink_free"/>
+      <geom name="pen_pink_g" type="capsule" fromto="-0.065 0 0  0.065 0 0" size="0.005"
+            material="pink_pen" mass="0.009" friction="1.4 0.02 0.002" condim="4"
+            solimp="0.95 0.99 0.001" solref="0.005 1"/>
+    </body>
+    <body name="pen_grey" pos="0.25 0.21 0.005">
+      <freejoint name="pen_grey_free"/>
+      <geom name="pen_grey_g" type="capsule" fromto="-0.065 0 0  0.065 0 0" size="0.005"
+            material="grey_pen" mass="0.009" friction="1.4 0.02 0.002" condim="4"
+            solimp="0.95 0.99 0.001" solref="0.005 1"/>
+    </body>
+  </worldbody>
+
+  <keyframe>
+    <!-- 'rest' is the median frame-0 pose of the 60 real episodes, in degrees:
+         [-57.3, -102.6, 96.8, 21.1, 3.0, 14.7]. shoulder_lift and elbow are clipped
+         to this model's limits (+-100, +-96.8). -->
+    <key name="rest"
+         qpos="-1.0001 -1.7453 1.6894 0.3683 0.0524 0.2566
+                0.25 -0.09 0.005 1 0 0 0
+                0.25  0.06 0.005 1 0 0 0
+                0.25  0.21 0.005 1 0 0 0"
+         ctrl="-1.0001 -1.7453 1.6894 0.3683 0.0524 0.2566"/>
+  </keyframe>
+</mujoco>
