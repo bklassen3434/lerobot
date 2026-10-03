@@ -89,6 +89,7 @@ if USE_WANDB:
 @app.function(
     image=image,
     gpu="A100-80GB",
+    memory=32768,  # reserve host RAM; without it the container was SIGKILLed (-9) while loading weights
     volumes={"/root/lerobot/outputs": outputs_vol, "/root/.cache/huggingface": hf_cache_vol},
     secrets=SECRETS,
     timeout=60 * 60 * 12,  # 20k steps runs ~5h20m at batch 64 w/ unfrozen encoder — leave headroom

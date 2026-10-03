@@ -376,3 +376,107 @@ Ranked by expected value per hour:
    closing?) and phase labelling (train on the approach segment only, where the colour choice
    happens). Both are cheap and compound with (1) and (2).
 4. **Only then**: robot time, and only for a checkpoint above 21.7 deg.
+
+---
+
+## 2026-10-02 — new strategy: marker-prompted SmolVLA (LLM picks colour, ring marks the pen)
+
+Language never got past 19.4 deg of the 21.7 deg bar, so the colour choice moves out of
+language and into the image. Claude picks the colour, the pen detector finds it in the
+top camera, a green ring is drawn there for the whole episode, and SmolVLA runs with the
+constant prompt `pick up the marked pen`.
+
+- `tools/marker_overlay.py`: `find_pen_px()` (pixel-only detector, no calibration) and
+  `draw_marker()`, shared by dataset building and inference so the ring is identical in both.
+- `tools/mark_dataset.py`: built **`bklassen3434/pick_pen_v2_marked`** from `pick_pen_v2_trimmed`
+  (60 episodes, 20,311 frames, 1 task, wrist camera and actions unchanged). Both pens were found
+  in 60/60 episodes; contact sheet `pick_pen_v2_marked_check.jpg` was checked by eye, and every ring
+  is on the named pen. `meta/markers.json` stores the ring and the *other* pen's pixel per episode,
+  so the offline probe can move the ring onto the other pen.
+- Each colour appears in both table positions across the recording sessions, so the ring is the only
+  cue for which side to go to.
+- Detector trap: glare on the table's front edge reads as "pink" and out-sized the real pen in 8
+  episodes. Fixed by ignoring blobs that touch the frame border.
+
+Training: `smolvla_pick_pen_v2_marked` on Modal (frozen VLM, 10k steps, batch 64, no contrastive
+loss), launched 2026-10-03; final checkpoint to be pushed to `bklassen3434/smolvla_pick_pen_v2_marked`.
+
+Probe: `tools/marker_probe.py` — directional_check.py with the RING swapped instead of the colour word
+(rings drawn fresh on clean `pick_pen_v2_trimmed` frames, since the marked frames already have one).
+Same bar: late-chunk pan Δ >= 21.7 deg and >= 80% toward the ringed pen. Noise floor: `trim_010000`,
+which never saw rings, scores 3.4 deg just from the image changing (6 probes).
+
+### Result: the ring PASSES the probe — first checkpoint ever to clear the bar
+
+`smolvla_pick_pen_v2_marked` (Hub: `bklassen3434/smolvla_pick_pen_v2_marked`, final 10k checkpoint),
+`marker_probe.py`, 48 probes over 16 episodes:
+
+| | late-chunk pan Δ | direction | verdict |
+|---|---|---|---|
+| ring-unaware `trim_010000` (noise floor) | 3.4 deg | — | — |
+| best language model `trim_010000` (colour word) | 19.42 deg | 13/16 | fail |
+| **marked 5k** | **29.98 deg** | **48/48** | **PASS** |
+| **marked 10k** | **30.03 deg** | **48/48** | **PASS** |
+
+138% of the 21.7 deg bar, 69% of the full 43.4 deg separation, mean improvement +27.7 deg, 100%
+directional at every point in the approach. Same data, same model, same training config as the best
+language run; only the prompt channel changed (word -> ring). Already saturated at 5k steps.
+
+Caveat: the probe has never been validated by a PASS on the robot (the only robot test was a fail it
+predicted). Next: a robot runner (detector -> ring -> SmolVLA), Ben to OK the first hardware run.
+
+### Robot runner built (2026-10-03, NOT yet run on hardware)
+
+`tools/marker_rollout.sh "<instruction>" <attempts> [repo]`: per attempt, `marker_aim.py` (Claude
+haiku turns the instruction into blue/pink, the top camera is read, both pens are found, and the ring
+preview is opened) -> Ben confirms the ring -> `lerobot-rollout` (sentry, 15 s, recorded) with
+`marker_shim.py` patching `SOFollower.get_observation` to draw the ring on every top frame. All
+rollout_eval.sh behaviour (motor_retry, return to start, resume) is kept.
+
+Dry runs, no hardware:
+- Claude: "pink pen"/"blue one"/"rose-gold pen"/"write in blue ink" were all correct; "banana" -> refused.
+- Full robot code path (patched get_observation -> build_dataset_frame -> SyncInferenceEngine, the
+  exact calls lerobot-rollout makes), from the PARKED frame: the end of the first chunk matches the
+  human demo at frame 50 within 2-5 deg (ep 0/20/40/59: -30.7/-41.8/-38.4/-6.0 vs -34.6/-43.6/-40.4/-10.6),
+  and moving the ring to the other pen shifts it 22-34 deg the other way.
+
+### Camera alignment tool (2026-10-03)
+
+Measured: the top camera moved **<1 px / <0.15 deg / <0.3% zoom** across all 60 training episodes
+(ORB + RANSAC against ep 59). So the marker model has seen exactly ONE camera view; putting the camera
+back matters. (Pen placement varied between sessions; the camera did not.)
+
+`tools/camera_align.py`: live top feed vs the ep-59 reference (edges / blend views), with live shift /
+rotation / zoom numbers, nudge hints and pen-detector status. Verified on synthetic offsets (15 px shift,
+8 px, 2 deg roll, 5% zoom, mixed): every measurement was correct to within 0.1 px / 0.03 deg, with the right hint direction.
+The "GOOD" bar (4 px, 0.4 deg, 1%) is a cautious guess; the policy's real tolerance is unmeasured.
+
+### Camera tolerance + first live aim (2026-10-03)
+
+- `marker_aim.py` bug: the USB top camera sends BLACK frames for ~1-2 s after opening, and the
+  first version used frame 15. It now waits for lit frames and then settles. (This was not a
+  permissions problem, even inside the Claude app's terminal.)
+- Live frame after Ben re-aligned: shift (+1.7, -4.2) px, zoom 99.8%, but **rolled -2.3 deg**.
+- Tolerance measured by rotating probe frames (ring moved with the pen): 2.3 deg -> 27.2 deg, 47/48;
+  5 deg -> 27.1 deg, 48/48 (unrotated: 30.0, 48/48). **Pen CHOICE is robust to a few degrees of roll.**
+  This does not cover grasp precision, which the probe doesn't measure.
+
+## 2026-10-03 — FIRST ROBOT RUN of the marker model: right pen 3/3
+
+`marker_rollout.sh`, dataset `bklassen3434/rollout_marker_20261003_153409` (local). Ring placed by
+Claude + detector each time; pens in the usual two spots.
+
+| attempt | asked | pen | pan when gripper closed | training grasp pan for that pen |
+|---|---|---|---|---|
+| 1 | pink | upper | -34.7 | -35.0 (range -56..-31) |
+| 2 | blue | lower | +6.4 | +9.9 (range +7..+12) |
+| 3 | pink | upper | -33.5 | -35.0 |
+
+**Pen choice 3/3, in BOTH directions.** That is the first time in the project the arm has gone to
+different pens on command. (Every language checkpoint went to the same place every time.) The gripper closed to ~5%
+at the pen (air closes to ~0.75%, a pen stalls it at ~2-4%), then reopened to ~15% and the arm went home,
+like the demos (which put the pen back). Whether the pen was actually LIFTED needs Ben's eyes or the
+wrist video. Attempt 2 dipped twice (lift -22 -> +5 between 6 s and 8 s): a possible regrasp.
+
+The "Record loop 1.7 Hz" warnings are the ~0.5 s MPS inference stall at each 50-step chunk boundary,
+not a slow loop: about 22 Hz overall (328-358 frames in 15 s).
