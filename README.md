@@ -10,6 +10,14 @@ I took the **SmolVLA** robot foundation model (450M params) and built + measured
 pipeline for it on rented **[Modal](https://modal.com) GPUs** — profiling the bottlenecks, adding
 efficiency features, fine-tuning it cheaply with LoRA, and scaling it across multiple GPUs.
 
+### 🤖 Highlight: a robot arm that picks the pen you ask for
+
+![The SO-101 picking the pink pen, then the blue pen, on command](./my_contributions/media/demo_marker.gif)
+
+Claude turns your instruction into a colour, a green ring marks that pen in the camera image, and a
+fine-tuned SmolVLA picks it up: right pen 7/7, picked up 6/7 so far. It took ten failed attempts to get
+there. **[Read how it works, and the story →](./my_contributions/PEN_PICKING.md)**
+
 ---
 
 ## 📖 How to read this repo

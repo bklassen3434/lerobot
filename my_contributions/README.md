@@ -3,8 +3,15 @@
 My hands-on project on top of LeRobot (see the [repo root README](../README.md) for the overview).
 Everything here is my own work.
 
+> **🤖 Highlight: [Pick the pen I ask for](./PEN_PICKING.md).** An SO-101 arm that picks up whichever
+> pen you name (Claude decides, a green ring points, SmolVLA picks), plus the story of the ten
+> failed attempts that led there.
+>
+> ![demo](./media/demo_marker.gif)
+
 ## Contents
 
+- **[PEN_PICKING.md](./PEN_PICKING.md)** — the pen-picking robot: how it works, what failed, what worked and why.
 - **[PROJECT_LOG.md](./PROJECT_LOG.md)** — **start here.** Every dataset and every trained
   model, what each one refers to, and the strategy behind the sequence.
 - **[LEARNING_ROADMAP.md](./LEARNING_ROADMAP.md)** — the plan and milestone checklist (M1–M4, all done).
