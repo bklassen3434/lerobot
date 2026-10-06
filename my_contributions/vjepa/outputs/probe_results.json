@@ -1,0 +1,63 @@
+{
+  "pixels": {
+    "dim": 2304,
+    "joints_r2": {
+      "shoulder_pan": 0.9988595247268677,
+      "shoulder_lift": 0.9981640577316284,
+      "elbow_flex": 0.995822548866272,
+      "wrist_flex": 0.8227418661117554,
+      "wrist_roll": 0.9809350967407227,
+      "gripper": 0.5586150288581848
+    },
+    "progress_r2": 0.3423408269882202,
+    "pen_layout_acc": 0.9282371401786804,
+    "target_side_acc_by_quarter": [
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ]
+  },
+  "mean": {
+    "dim": 1024,
+    "joints_r2": {
+      "shoulder_pan": 0.9911471009254456,
+      "shoulder_lift": 0.9905804991722107,
+      "elbow_flex": 0.9850806593894958,
+      "wrist_flex": 0.6519819498062134,
+      "wrist_roll": 0.9710235595703125,
+      "gripper": 0.5143876075744629
+    },
+    "progress_r2": 0.5192923545837402,
+    "pen_layout_acc": 0.9994799494743347,
+    "target_side_acc_by_quarter": [
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ]
+  },
+  "grid": {
+    "dim": 16384,
+    "joints_r2": {
+      "shoulder_pan": 0.9962865114212036,
+      "shoulder_lift": 0.9963927268981934,
+      "elbow_flex": 0.9942665100097656,
+      "wrist_flex": 0.8129028677940369,
+      "wrist_roll": 0.983932614326477,
+      "gripper": 0.6174511909484863
+    },
+    "progress_r2": 0.47646021842956543,
+    "pen_layout_acc": 0.9849193692207336,
+    "target_side_acc_by_quarter": [
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ]
+  },
+  "chance": {
+    "pen_layout": 0.5366614460945129,
+    "target_side": 0.5319812893867493
+  }
+}

@@ -480,3 +480,27 @@ wrist video. Attempt 2 dipped twice (lift -22 -> +5 between 6 s and 8 s): a poss
 
 The "Record loop 1.7 Hz" warnings are the ~0.5 s MPS inference stall at each 50-step chunk boundary,
 not a slow loop: about 22 Hz overall (328-358 frames in 15 s).
+
+---
+
+## 2026-10-04 — V-JEPA 2 encoder probe (world-model step 1) + recording-order leak
+
+`vjepa/embed.py` + `vjepa/probe.py`; full write-up in `vjepa/FINDINGS.md`. Frozen V-JEPA 2 ViT-L
+embeddings of the v2 top camera linearly recover arm pose (R² ≥0.98 big joints), pen layout (99.9%)
+and task progress, beating a raw-pixel baseline on the semantic ones. Gripper is weak (R² ~0.6).
+**Leak:** from idle frames before the arm moves, even raw pixels predict the `blue`/`pink`
+instruction with 100% accuracy, because v2 was recorded in 4 colour x layout blocks. A plausible
+reason the language runs stalled. Fix for future recordings: interleave colour and layout.
+
+**Correction + step 2 (same day).** The leak is not lighting: `vjepa/batch_diff.py` shows the
+*untouched* pen sits on identical pixels for a whole block while the picked pen moves a few px each
+reset. Fix: re-place both pens every reset and randomise colour/layout per episode.
+`vjepa/world_model.py` (action-conditioned latent predictor, 0.5 s ahead) beats copy (0.70 latent
+error on moving frames; real future in top-5 retrieval 64% vs 9%) and follows a swapped plan 76% of
+the time. It doesn't predict the grasp (gripper ≈ copy). Details in `vjepa/FINDINGS.md`.
+
+**Wrist camera + planning (2026-10-04/05).** Adding the wrist camera doesn't improve 0.5 s prediction,
+but it makes goal-picture planning work: `vjepa/plan.py` (CEM search through the world model, no
+policy) reaches the right pen 77% (own goal) / **93%** (goal picture from another episode) of the time
+1.5 s ahead, vs 50% random. At 3 s it's a coin flip (rollout drift). The planner exploits the model
+(beats the demo actions in imagination), so these are offline numbers only. Details in `vjepa/FINDINGS.md`.

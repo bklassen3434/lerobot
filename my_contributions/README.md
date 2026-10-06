@@ -19,6 +19,9 @@ Everything here is my own work.
 - **[M2_FINDINGS.md](./M2_FINDINGS.md)** — efficiency: gradient accumulation → effective batch 32 on ~45% less memory.
 - **[M3_FINDINGS.md](./M3_FINDINGS.md)** — LoRA: fine-tuned `smolvla_base` training just 0.16% of params.
 - **[M4_FINDINGS.md](./M4_FINDINGS.md)** — distributed: DDP ~1.9× scaling, real bf16 +40%, FSDP debugged.
+- **[vjepa/FINDINGS.md](./vjepa/FINDINGS.md)** — a V-JEPA 2 world model of the pen scene: the frozen
+  encoder sees the scene, a small predictor imagines 0.5 s ahead from a planned action, and the
+  probe exposed a recording-order leak in `pick_pen_v2` (the image alone reveals the instruction).
 - **[modal/](./modal/)** — the Modal scripts that ran each milestone on rented GPUs.
 - **[tools/](./tools/)** — dataset checks, training patches, and evaluation probes for the
   pick-the-named-pen task.

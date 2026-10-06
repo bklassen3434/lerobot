@@ -140,6 +140,13 @@ It was already this good after 5,000 training steps, half the run.
    signal (the ring) connects them.
 4. **Build the cheap offline check first.** Every result above was measured on a laptop in
    minutes. The robot only got checkpoints that had already passed.
+5. **Check that the picture can't answer the question by itself** (found afterwards, in
+   [`vjepa/FINDINGS.md`](./vjepa/FINDINGS.md)). `pick_pen_v2` was recorded in four blocks
+   (blue+left, pink+left, blue+right, pink+right). The pen that *wasn't* asked for never got
+   touched, so it sat on exactly the same pixels for a whole block. From frames before the arm
+   moves, even raw pixels predict "blue" vs "pink" with 100% accuracy. So in training the policy
+   never needed the word, which plausibly explains why language stalled at 19.4° (not proven).
+   Next time: shuffle colour and side per episode, and re-place **both** pens at every reset.
 
 ## Honest limits
 
